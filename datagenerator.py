@@ -5,6 +5,7 @@ import json
 import random
 import keras.preprocessing.image as image_preprocessing
 import progressbar
+from pyntcloud import PyntCloud
 
 
 class DataGenerator(object):
@@ -21,6 +22,11 @@ class DataGenerator(object):
         self.input_type = input_type
         self.output_targets = output_targets
 
+        # Create some caches.
+        self.image_cache = {}
+        self.voxelgrid_cache = {}
+        self.pointcloud_cache = {}
+
         # Get all the paths.
         self._get_paths()
 
@@ -30,6 +36,9 @@ class DataGenerator(object):
 
         # Create the QR-codes dictionary.
         self._create_qrcodes_dictionary()
+
+        # Compute dimensions.
+        self._compute_dimensions()
 
 
     def _get_paths(self):
@@ -109,10 +118,53 @@ class DataGenerator(object):
 
 
     def _load_image(self, image_path):
-        image = image_preprocessing.load_img(image_path, target_size=(160, 90))
-        image = image.rotate(-90, expand=True)
-        image = np.array(image)
+        image = self.image_cache.get(image_path, [])
+        if image == []:
+            image = image_preprocessing.load_img(image_path, target_size=(160, 90))
+            image = image.rotate(-90, expand=True)
+            image = np.array(image)
+            self.voxelgrid_cache[image_path] = image
         return image
+
+
+    def _load_voxelgrid(self, pcd_path):
+        voxelgrid = self.voxelgrid_cache.get(pcd_path, [])
+        if voxelgrid == []:
+            points = PyntCloud.from_file(pcd_path)
+            #voxelgrid_id = points.add_structure("voxelgrid", size_x=0.005, size_y=0.005, size_z=0.005)
+            voxelgrid_id = points.add_structure("voxelgrid", n_x=32, n_y=32, n_z=32)
+            voxelgrid = points.structures[voxelgrid_id]
+            voxelgrid = voxelgrid.get_feature_vector(mode="density")
+            self.voxelgrid_cache[pcd_path] = voxelgrid
+        return voxelgrid
+
+
+    def _load_pointcloud(self, pcd_path):
+        pointcloud = self.pointcloud_cache.get(pcd_path, [])
+        if pointcloud == []:
+            pointcloud = PyntCloud.from_file(pcd_path).points.values
+            pointcloud = pointcloud[:32000]
+            pointcloud = np.array(pointcloud)
+            assert pointcloud.shape == (32000, 4), pcd_path + " " + str(pointcloud.shape)
+            self.pointcloud_cache[pcd_path] = pointcloud
+        return pointcloud
+
+
+    def _compute_dimensions(self):
+
+        if self.input_type == "image":
+            self.input_shape = (90, 160, 3)
+
+        elif self.input_type == "voxelgrid":
+            self.input_shape = (32, 32, 32)
+
+        elif self.input_type == "pointcloud":
+            self.input_shape = (32000, 4)
+
+        else:
+            raise Exception("Unknown input_type: " + input_type)
+
+        self.output_size = len(self.output_targets)
 
 
     def generate(self, size, qrcodes_to_use=None, verbose=False):
@@ -138,12 +190,42 @@ class DataGenerator(object):
                 targets, jpg_paths, pcd_paths = self.qrcodes_dictionary[qrcode]
 
                 # Get a random image.
-                if len(jpg_paths) == 0:
-                    continue
-                jpg_path = random.choice(jpg_paths)
-                image = self._load_image(jpg_path)
+                if self.input_type == "image":
+                    if len(jpg_paths) == 0:
+                        continue
+                    jpg_path = random.choice(jpg_paths)
+                    image = self._load_image(jpg_path)
+                    x_input = image
 
-                x_input = image
+                # Get a random voxelgrid.
+                elif self.input_type == "voxelgrid":
+                    if len(pcd_paths) == 0:
+                        continue
+                    pcd_path = random.choice(pcd_paths)
+                    try:
+                        voxelgrid = self._load_voxelgrid(pcd_path)
+                    except Exception as e:
+                        print(e)
+                        print("Error:", pcd_path)
+                        continue
+                    x_input = voxelgrid
+
+                # Get a random pointcloud.
+                elif self.input_type == "pointcloud":
+                    if len(pcd_paths) == 0:
+                        continue
+                    pcd_path = random.choice(pcd_paths)
+                    try:
+                        voxelgrid = self._load_pointcloud(pcd_path)
+                    except Exception as e:
+                        print(e)
+                        print("Error:", pcd_path)
+                        continue
+                    x_input = voxelgrid
+
+                else:
+                    raise Exception("Unknown input_type: " + input_type)
+
                 y_output = targets
 
                 x_inputs.append(x_input)
@@ -168,7 +250,7 @@ def test_generator():
     else:
         dataset_path = "../data"
 
-    data_generator = DataGenerator(dataset_path=dataset_path, input_type="image", output_targets=["height", "weight"])
+    data_generator = DataGenerator(dataset_path=dataset_path, input_type="voxelgrid", output_targets=["height", "weight"])
 
     print("jpg_paths", len(data_generator.jpg_paths))
     print("pcd_paths", len(data_generator.jpg_paths))
@@ -184,7 +266,7 @@ def test_generator():
     qrcodes_validate = qrcodes_shuffle[split_index:]
 
     print("Training data:")
-    x_train, y_train = next(data_generator.generate(size=20, qrcodes_to_use=qrcodes_train))
+    x_train, y_train = next(data_generator.generate(size=200, qrcodes_to_use=qrcodes_train))
     print(x_train.shape)
     print(y_train.shape)
     print("")
