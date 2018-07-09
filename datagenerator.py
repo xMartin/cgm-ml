@@ -10,17 +10,30 @@ from pyntcloud import PyntCloud
 
 class DataGenerator(object):
 
-    def __init__(self, dataset_path, input_type, output_targets):
+    def __init__(
+        self,
+        dataset_path,
+        input_type,
+        output_targets,
+        image_target_shape=(160, 90),
+        voxelgrid_target_shape=(32, 32, 32),
+        pointcloud_target_size=32000
+        ):
 
         # Preconditions.
         assert os.path.exists(dataset_path), "dataset_path must exist: " + str(dataset_path)
         assert isinstance(input_type, str), "input_type must be string: " + str(input_type)
         assert isinstance(output_targets, list), "output_targets must be list: " + str(output_targets)
+        assert len(image_target_shape) == 2, "image_target_shape must be 2-dimensional: " + str(image_target_shape)
+        assert len(voxelgrid_target_shape) == 3, "voxelgrid_target_shape must be 3-dimensional: " + str(voxelgrid_target_shape)
 
         # Assign the instance-variables.
         self.dataset_path = dataset_path
         self.input_type = input_type
         self.output_targets = output_targets
+        self.image_target_shape = image_target_shape
+        self.voxelgrid_target_shape = voxelgrid_target_shape
+        self.pointcloud_target_size = pointcloud_target_size
 
         # Create some caches.
         self.image_cache = {}
@@ -117,7 +130,7 @@ class DataGenerator(object):
     def _load_image(self, image_path):
         image = self.image_cache.get(image_path, [])
         if image == []:
-            image = image_preprocessing.load_img(image_path, target_size=(160, 90))
+            image = image_preprocessing.load_img(image_path, target_size=self.image_target_shape)
             image = image.rotate(-90, expand=True)
             image = np.array(image)
             self.voxelgrid_cache[image_path] = image
@@ -129,7 +142,7 @@ class DataGenerator(object):
         if voxelgrid == []:
             points = PyntCloud.from_file(pcd_path)
             #voxelgrid_id = points.add_structure("voxelgrid", size_x=0.005, size_y=0.005, size_z=0.005)
-            voxelgrid_id = points.add_structure("voxelgrid", n_x=32, n_y=32, n_z=32)
+            voxelgrid_id = points.add_structure("voxelgrid", n_x=self.voxelgrid_target_shape[0], n_y=self.voxelgrid_target_shape[1], n_z=self.voxelgrid_target_shape[2])
             voxelgrid = points.structures[voxelgrid_id]
             voxelgrid = voxelgrid.get_feature_vector(mode="density")
             self.voxelgrid_cache[pcd_path] = voxelgrid
@@ -140,9 +153,9 @@ class DataGenerator(object):
         pointcloud = self.pointcloud_cache.get(pcd_path, [])
         if pointcloud == []:
             pointcloud = PyntCloud.from_file(pcd_path).points.values
-            pointcloud = pointcloud[:32000]
+            pointcloud = pointcloud[:self.pointcloud_target_size]
             pointcloud = np.array(pointcloud)
-            assert pointcloud.shape == (32000, 4), pcd_path + " " + str(pointcloud.shape)
+            assert pointcloud.shape == (pointcloud_target_size, 4), pcd_path + " " + str(pointcloud.shape)
             self.pointcloud_cache[pcd_path] = pointcloud
         return pointcloud
 
@@ -359,6 +372,32 @@ def test_dataset():
     print(len(x_qrcodes))
 
 
+def test_parameters():
+
+    if os.path.exists("datasetpath.txt"):
+        dataset_path = open("datasetpath.txt", "r").read().replace("\n", "")
+    else:
+        dataset_path = "../data"
+
+    print("Testing image...")
+    data_generator = DataGenerator(dataset_path=dataset_path, input_type="image", output_targets=["height", "weight"], image_target_shape=(20,20))
+    x_input, y_output = next(data_generator.generate(size=1))
+    assert x_input.shape[1:3] == (20,20)
+
+    print("Testing voxelgrid...")
+    data_generator = DataGenerator(dataset_path=dataset_path, input_type="voxelgrid", output_targets=["height", "weight"], voxelgrid_target_shape=(20, 20, 20))
+    x_input, y_output = next(data_generator.generate(size=1))
+    assert x_input.shape[1:] == (20, 20, 20)
+
+    print("Testing pointcloud...")
+    data_generator = DataGenerator(dataset_path=dataset_path, input_type="pointcloud", output_targets=["height", "weight"], pointcloud_target_size=16000)
+    x_input, y_output = next(data_generator.generate(size=1))
+    assert x_input.shape[1:] == (20, 4)
+
+    print("Done.")
+
+
 if __name__ == "__main__":
     #test_generator()
-    test_dataset()
+    #test_dataset()
+    test_parameters()
