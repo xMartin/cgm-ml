@@ -37,9 +37,6 @@ class DataGenerator(object):
         # Create the QR-codes dictionary.
         self._create_qrcodes_dictionary()
 
-        # Compute dimensions.
-        self._compute_dimensions()
-
 
     def _get_paths(self):
 
@@ -150,21 +147,24 @@ class DataGenerator(object):
         return pointcloud
 
 
-    def _compute_dimensions(self):
+    def get_input_shape(self):
 
         if self.input_type == "image":
-            self.input_shape = (90, 160, 3)
+            return (90, 160, 3)
 
         elif self.input_type == "voxelgrid":
-            self.input_shape = (32, 32, 32)
+            return (32, 32, 32)
 
         elif self.input_type == "pointcloud":
-            self.input_shape = (32000, 4)
+            return (32000, 4)
 
         else:
             raise Exception("Unknown input_type: " + input_type)
 
-        self.output_size = len(self.output_targets)
+
+    def get_output_size(self):
+
+        return len(self.output_targets)
 
 
     def generate(self, size, qrcodes_to_use=None, verbose=False):
@@ -205,8 +205,8 @@ class DataGenerator(object):
                     try:
                         voxelgrid = self._load_voxelgrid(pcd_path)
                     except Exception as e:
-                        print(e)
-                        print("Error:", pcd_path)
+                        #print(e)
+                        #print("Error:", pcd_path)
                         continue
                     x_input = voxelgrid
 
@@ -216,12 +216,12 @@ class DataGenerator(object):
                         continue
                     pcd_path = random.choice(pcd_paths)
                     try:
-                        voxelgrid = self._load_pointcloud(pcd_path)
+                        pointcloud = self._load_pointcloud(pcd_path)
                     except Exception as e:
-                        print(e)
-                        print("Error:", pcd_path)
+                        #print(e)
+                        #print("Error:", pcd_path)
                         continue
-                    x_input = voxelgrid
+                    x_input = pointcloud
 
                 else:
                     raise Exception("Unknown input_type: " + input_type)
@@ -241,6 +241,74 @@ class DataGenerator(object):
             y_outputs = np.array(y_outputs)
 
             yield x_inputs, y_outputs
+
+
+    def generate_dataset(self, qrcodes_to_use=None):
+
+        if qrcodes_to_use == None:
+            qrcodes_to_use = self.qrcodes
+
+        x_qrcodes = []
+        x_inputs = []
+        y_outputs = []
+        for index, qrcode in enumerate(qrcodes_to_use):
+
+            print("Processing:", qrcode)
+
+            # Get targets and paths.
+            if qrcode not in  self.qrcodes_dictionary.keys():
+                print("No data for:", qrcode)
+                continue
+            targets, jpg_paths, pcd_paths = self.qrcodes_dictionary[qrcode]
+            print(targets)
+
+            # Process image.
+            if self.input_type == "image":
+
+                for jpg_path in jpg_paths:
+                    image = self._load_image(jpg_path)
+                    x_qrcodes.append(qrcode)
+                    x_inputs.append(image)
+                    y_outputs.append(targets)
+
+
+            # Process voxelgrid.
+            elif self.input_type == "voxelgrid":
+
+                for pcd_path in pcd_paths:
+                    try:
+                        voxelgrid = self._load_voxelgrid(pcd_path)
+                    except Exception as e:
+                        print(e)
+                        print("Error:", pcd_path)
+
+                    x_qrcodes.append(qrcode)
+                    x_inputs.append(voxelgrid)
+                    y_outputs.append(targets)
+
+            # Process pointcloud.
+            elif self.input_type == "pointcloud":
+
+                for pcd_path in pcd_paths:
+                    try:
+                        pointcloud = self._load_pointcloud(pcd_path)
+                    except Exception as e:
+                        print(e)
+                        print("Error:", pcd_path)
+                        continue
+
+                    x_qrcodes.append(qrcode)
+                    x_inputs.append(pointcloud)
+                    y_outputs.append(targets)
+
+            else:
+                raise Exception("Unknown input_type: " + input_type)
+
+        x_qrcodes = np.array(x_qrcodes)
+        x_inputs = np.array(x_inputs)
+        y_outputs = np.array(y_outputs)
+
+        return x_qrcodes, x_inputs, y_outputs
 
 
 def test_generator():
@@ -278,5 +346,19 @@ def test_generator():
     print("")
 
 
+def test_dataset():
+
+    if os.path.exists("datasetpath.txt"):
+        dataset_path = open("datasetpath.txt", "r").read().replace("\n", "")
+    else:
+        dataset_path = "../data"
+
+    data_generator = DataGenerator(dataset_path=dataset_path, input_type="image", output_targets=["height", "weight"])
+
+    x_qrcodes, x_inputs, y_outputs = data_generator.generate_dataset(data_generator.qrcodes[0:4])
+    print(len(x_qrcodes))
+
+
 if __name__ == "__main__":
-    test_generator()
+    #test_generator()
+    test_dataset()
