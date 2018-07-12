@@ -180,7 +180,7 @@ class DataGenerator(object):
         return len(self.output_targets)
 
 
-    def generate(self, size, qrcodes_to_use=None, verbose=False):
+    def generate(self, size, qrcodes_to_use=None, verbose=False, yield_file_paths=False):
 
         if qrcodes_to_use == None:
             qrcodes_to_use = self.qrcodes
@@ -189,6 +189,7 @@ class DataGenerator(object):
 
             x_inputs = []
             y_outputs = []
+            file_paths = []
 
             if verbose == True:
                 bar = progressbar.ProgressBar(max_value=size)
@@ -202,12 +203,18 @@ class DataGenerator(object):
                     continue
                 targets, jpg_paths, pcd_paths = self.qrcodes_dictionary[qrcode]
 
+                # Get a sample.
+                x_input = None
+                y_output = None
+                file_path = None
+
                 # Get a random image.
                 if self.input_type == "image":
                     if len(jpg_paths) == 0:
                         continue
                     jpg_path = random.choice(jpg_paths)
                     image = self._load_image(jpg_path)
+                    file_path = jpg_path
                     x_input = image
 
                 # Get a random voxelgrid.
@@ -217,11 +224,10 @@ class DataGenerator(object):
                     pcd_path = random.choice(pcd_paths)
                     try:
                         voxelgrid = self._load_voxelgrid(pcd_path)
+                        file_path = pcd_path
+                        x_input = voxelgrid
                     except Exception as e:
-                        #print(e)
-                        #print("Error:", pcd_path)
                         continue
-                    x_input = voxelgrid
 
                 # Get a random pointcloud.
                 elif self.input_type == "pointcloud":
@@ -230,19 +236,23 @@ class DataGenerator(object):
                     pcd_path = random.choice(pcd_paths)
                     try:
                         pointcloud = self._load_pointcloud(pcd_path)
+                        file_path = pcd_path
+                        x_input = pointcloud
                     except Exception as e:
-                        #print(e)
-                        #print("Error:", pcd_path)
                         continue
-                    x_input = pointcloud
 
+                # Should not happen.
                 else:
                     raise Exception("Unknown input_type: " + input_type)
 
+                # Set the output.
                 y_output = targets
 
-                x_inputs.append(x_input)
-                y_outputs.append(y_output)
+                # Got a proper sample.
+                if x_input is not None and y_output is not None and file_path is not None:
+                    x_inputs.append(x_input)
+                    y_outputs.append(y_output)
+                    file_paths.append(pcd_path)
 
                 if verbose == True:
                     bar.update(len(x_inputs))
@@ -253,7 +263,10 @@ class DataGenerator(object):
             x_inputs = np.array(x_inputs)
             y_outputs = np.array(y_outputs)
 
-            yield x_inputs, y_outputs
+            if yield_file_paths == False:
+                yield x_inputs, y_outputs
+            else:
+                yield x_inputs, y_outputs, file_paths
 
 
     def generate_dataset(self, qrcodes_to_use=None):
