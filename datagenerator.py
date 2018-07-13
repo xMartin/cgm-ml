@@ -18,6 +18,7 @@ class DataGenerator(object):
         image_target_shape=(160, 90),
         voxelgrid_target_shape=(32, 32, 32),
         voxel_size_meters=0.01,
+        voxelgrid_random_rotation=False,
         pointcloud_target_size=32000
         ):
 
@@ -35,6 +36,7 @@ class DataGenerator(object):
         self.image_target_shape = image_target_shape
         self.voxelgrid_target_shape = voxelgrid_target_shape
         self.voxel_size_meters = voxel_size_meters
+        self.voxelgrid_random_rotation = voxelgrid_random_rotation
         self.pointcloud_target_size = pointcloud_target_size
 
         # Create some caches.
@@ -144,6 +146,12 @@ class DataGenerator(object):
         voxelgrid = self.voxelgrid_cache.get(pcd_path, [])
         if voxelgrid == []:
             point_cloud = PyntCloud.from_file(pcd_path)
+            if self.voxelgrid_random_rotation == True:
+                points = point_cloud.points
+                numpy_points = points.values[:,0:3]
+                numpy_points = self._rotate_point_cloud(numpy_points)
+                points.iloc[:,0:3] = numpy_points
+                point_cloud.points = points
             voxelgrid_id = point_cloud.add_structure("voxelgrid", size_x=self.voxel_size_meters, size_y=self.voxel_size_meters, size_z=self.voxel_size_meters)
             voxelgrid = point_cloud.structures[voxelgrid_id].get_feature_vector(mode="density")
             voxelgrid = self._pad_voxelgrid(voxelgrid)
@@ -151,6 +159,25 @@ class DataGenerator(object):
             assert voxelgrid.shape == self.voxelgrid_target_shape
             self.voxelgrid_cache[pcd_path] = voxelgrid
         return voxelgrid
+
+
+    def _rotate_point_cloud(self, point_cloud):
+
+        rotation_angle = np.random.uniform() * 2 * np.pi
+        cosval = np.cos(rotation_angle)
+        sinval = np.sin(rotation_angle)
+        rotation_matrix = np.array([[cosval, sinval, 0],
+                                        [-sinval, cosval, 0],
+                                        [0, 0, 1]])
+
+        rotated_data = np.zeros(point_cloud.shape, dtype=np.float32)
+        for k in range(point_cloud.shape[0]):
+
+
+            shape_pc = point_cloud[k, ...]
+            rotated_data[k, ...] = np.dot(shape_pc.reshape((-1, 3)), rotation_matrix)
+
+        return rotated_data
 
 
     def _pad_voxelgrid(self, voxelgrid):
@@ -481,8 +508,3 @@ if __name__ == "__main__":
     #test_dataset()
     #test_parameters()
     pass
-
-data_generator = DataGenerator(dataset_path="../data", input_type="voxelgrid", output_targets=["height", "weight"])
-print("Generating...")
-data = next(data_generator.generate(size=1))
-print(len(data))
