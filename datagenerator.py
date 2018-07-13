@@ -97,7 +97,8 @@ class DataGenerator(object):
 
             # In the future there will be multiple manual measurements. Handle this!
             if qrcode in qrcodes_dictionary.keys():
-                raise Exception("Multiple manual measurements for QR-code: " + qrcode)
+                print("WARNING! Multiple manual measurements for QR-code: " + qrcode + " " + json_path_measure)
+                continue
 
             # Extract the targets.
             targets = self._extract_targets(json_data_measure)
