@@ -17,6 +17,7 @@ class DataGenerator(object):
         output_targets,
         image_target_shape=(160, 90),
         voxelgrid_target_shape=(32, 32, 32),
+        voxel_size_meters=0.01,
         pointcloud_target_size=32000
         ):
 
@@ -33,6 +34,7 @@ class DataGenerator(object):
         self.output_targets = output_targets
         self.image_target_shape = image_target_shape
         self.voxelgrid_target_shape = voxelgrid_target_shape
+        self.voxel_size_meters = voxel_size_meters
         self.pointcloud_target_size = pointcloud_target_size
 
         # Create some caches.
@@ -141,12 +143,74 @@ class DataGenerator(object):
     def _load_voxelgrid(self, pcd_path):
         voxelgrid = self.voxelgrid_cache.get(pcd_path, [])
         if voxelgrid == []:
-            points = PyntCloud.from_file(pcd_path)
-            #voxelgrid_id = points.add_structure("voxelgrid", size_x=0.005, size_y=0.005, size_z=0.005)
-            voxelgrid_id = points.add_structure("voxelgrid", n_x=self.voxelgrid_target_shape[0], n_y=self.voxelgrid_target_shape[1], n_z=self.voxelgrid_target_shape[2])
-            voxelgrid = points.structures[voxelgrid_id]
-            voxelgrid = voxelgrid.get_feature_vector(mode="density")
+            point_cloud = PyntCloud.from_file(pcd_path)
+            voxelgrid_id = point_cloud.add_structure("voxelgrid", size_x=self.voxel_size_meters, size_y=self.voxel_size_meters, size_z=self.voxel_size_meters)
+            voxelgrid = point_cloud.structures[voxelgrid_id].get_feature_vector(mode="density")
+            voxelgrid = self._pad_voxelgrid(voxelgrid)
+            voxelgrid = self._crop_voxelgrid(voxelgrid)
+            assert voxelgrid.shape == self.voxelgrid_target_shape
             self.voxelgrid_cache[pcd_path] = voxelgrid
+        return voxelgrid
+
+
+    def _pad_voxelgrid(self, voxelgrid):
+
+        pad_before = [0.0] * 3
+        pad_after = [0.0] * 3
+        for i in range(3):
+            pad_before[i] = (self.voxelgrid_target_shape[i] - voxelgrid.shape[i]) // 2
+            pad_before[i] = max(0, pad_before[i])
+            pad_after[i] = self.voxelgrid_target_shape[i] - pad_before[i] - voxelgrid.shape[i]
+            pad_after[i] = max(0, pad_after[i])
+        voxelgrid = np.pad(
+            voxelgrid,
+            [(pad_before[0], pad_after[0]), (pad_before[1], pad_after[1]), (pad_before[2], pad_after[2])],
+            'constant', constant_values=[(0, 0), (0, 0), (0, 0)]
+        )
+
+        return voxelgrid
+
+
+    def _crop_voxelgrid(self, voxelgrid):
+
+        while voxelgrid.shape[0] > self.voxelgrid_target_shape[0]:
+            voxels_start = np.count_nonzero(voxelgrid[0,:,:] != 0.0)
+            voxels_end = np.count_nonzero(voxelgrid[-1,:,:] != 0.0)
+            if voxels_start > voxels_end:
+                voxelgrid = voxelgrid[:-1,:,:]
+            else:
+                voxelgrid = voxelgrid[1:,:,:]
+
+        while voxelgrid.shape[1] > self.voxelgrid_target_shape[1]:
+            voxels_start = np.count_nonzero(voxelgrid[:,0,:] != 0.0)
+            voxels_end = np.count_nonzero(voxelgrid[:,-1,:] != 0.0)
+            if voxels_start > voxels_end:
+                voxelgrid = voxelgrid[:,:-1,:]
+            else:
+                voxelgrid = voxelgrid[:,1:,:]
+
+        while voxelgrid.shape[2] > self.voxelgrid_target_shape[2]:
+            voxels_start = np.count_nonzero(voxelgrid[:,:,0] != 0.0)
+            voxels_end = np.count_nonzero(voxelgrid[:,:,-1] != 0.0)
+            if voxels_start > voxels_end:
+                voxelgrid = voxelgrid[:,:,:-1]
+            else:
+                voxelgrid = voxelgrid[:,:,1:]
+
+        return voxelgrid
+
+
+    def _center_crop_voxelgrid(self, voxelgrid):
+
+        # Center crop.
+        crop_start = [0.0] * 3
+        crop_end = [0.0] * 3
+        for i in range(3):
+            crop_start[i] = (voxelgrid.shape[i] - self.voxelgrid_target_shape[i]) // 2
+            crop_start[i] = max(0, crop_start[i])
+            crop_end[i] = target_shape[i] + crop_start[i]
+        voxelgrid = voxelgrid[crop_start[0]:crop_end[0], crop_start[1]:crop_end[1], crop_start[2]:crop_end[2]]
+
         return voxelgrid
 
 
@@ -228,6 +292,7 @@ class DataGenerator(object):
                         file_path = pcd_path
                         x_input = voxelgrid
                     except Exception as e:
+                        print(e)
                         continue
 
                 # Get a random pointcloud.
@@ -414,4 +479,10 @@ def test_parameters():
 if __name__ == "__main__":
     #test_generator()
     #test_dataset()
-    test_parameters()
+    #test_parameters()
+    pass
+
+data_generator = DataGenerator(dataset_path="../data", input_type="voxelgrid", output_targets=["height", "weight"])
+print("Generating...")
+data = next(data_generator.generate(size=1))
+print(len(data))
