@@ -6,6 +6,7 @@ import random
 import keras.preprocessing.image as image_preprocessing
 import progressbar
 from pyntcloud import PyntCloud
+import matplotlib.pyplot as plt
 
 
 class DataGenerator(object):
@@ -19,15 +20,20 @@ class DataGenerator(object):
         voxelgrid_target_shape=(32, 32, 32),
         voxel_size_meters=0.01,
         voxelgrid_random_rotation=False,
-        pointcloud_target_size=32000
+        pointcloud_target_size=32000,
+        pointcloud_random_rotation=False
         ):
 
         # Preconditions.
         assert os.path.exists(dataset_path), "dataset_path must exist: " + str(dataset_path)
         assert isinstance(input_type, str), "input_type must be string: " + str(input_type)
         assert isinstance(output_targets, list), "output_targets must be list: " + str(output_targets)
-        assert len(image_target_shape) == 2, "image_target_shape must be 2-dimensional: " + str(image_target_shape)
-        assert len(voxelgrid_target_shape) == 3, "voxelgrid_target_shape must be 3-dimensional: " + str(voxelgrid_target_shape)
+
+        if input_type == "image":
+            assert len(image_target_shape) == 2, "image_target_shape must be 2-dimensional: " + str(image_target_shape)
+
+        if input_type == "voxelgrid":
+            assert len(voxelgrid_target_shape) == 3, "voxelgrid_target_shape must be 3-dimensional: " + str(voxelgrid_target_shape)
 
         # Assign the instance-variables.
         self.dataset_path = dataset_path
@@ -38,6 +44,7 @@ class DataGenerator(object):
         self.voxel_size_meters = voxel_size_meters
         self.voxelgrid_random_rotation = voxelgrid_random_rotation
         self.pointcloud_target_size = pointcloud_target_size
+        self.pointcloud_random_rotation = pointcloud_random_rotation
 
         # Create some caches.
         self.image_cache = {}
@@ -142,22 +149,49 @@ class DataGenerator(object):
         return image
 
 
-    def _load_voxelgrid(self, pcd_path):
+    def _load_pointcloud(self, pcd_path, preprocess=True, augmentation=True):
+        pointcloud = self.pointcloud_cache.get(pcd_path, [])
+        if pointcloud == []:
+            pointcloud = PyntCloud.from_file(pcd_path).points.values
+            pointcloud = np.array(pointcloud)
+
+            if self.pointcloud_target_size != None and preprocess == True:
+                pointcloud = pointcloud[:self.pointcloud_target_size]
+
+            if self.pointcloud_random_rotation == True and augmentation==True:
+                numpy_points = pointcloud[:,0:3]
+                numpy_points = self._rotate_point_cloud(numpy_points)
+                pointcloud[:,0:3] = numpy_points
+
+            #self.pointcloud_cache[pcd_path] = pointcloud
+        return pointcloud
+
+
+    def _load_voxelgrid(self, pcd_path, preprocess=True, augmentation=True):
         voxelgrid = self.voxelgrid_cache.get(pcd_path, [])
         if voxelgrid == []:
+
+            # Load the pointcloud.
             point_cloud = PyntCloud.from_file(pcd_path)
-            if self.voxelgrid_random_rotation == True:
+            if self.voxelgrid_random_rotation == True and augmentation == True:
                 points = point_cloud.points
                 numpy_points = points.values[:,0:3]
                 numpy_points = self._rotate_point_cloud(numpy_points)
                 points.iloc[:,0:3] = numpy_points
                 point_cloud.points = points
+
+            # Create voxelgrid from pointcloud.
             voxelgrid_id = point_cloud.add_structure("voxelgrid", size_x=self.voxel_size_meters, size_y=self.voxel_size_meters, size_z=self.voxel_size_meters)
             voxelgrid = point_cloud.structures[voxelgrid_id].get_feature_vector(mode="density")
-            voxelgrid = self._pad_voxelgrid(voxelgrid)
-            voxelgrid = self._crop_voxelgrid(voxelgrid)
-            assert voxelgrid.shape == self.voxelgrid_target_shape
-            self.voxelgrid_cache[pcd_path] = voxelgrid
+
+            # Do the preprocessing.
+            if preprocess == True:
+                voxelgrid = self._pad_voxelgrid(voxelgrid)
+                voxelgrid = self._crop_voxelgrid(voxelgrid)
+                assert voxelgrid.shape == self.voxelgrid_target_shape
+
+            #self.voxelgrid_cache[pcd_path] = voxelgrid # TODO cache is turned off because of you know why...
+
         return voxelgrid
 
 
@@ -241,17 +275,6 @@ class DataGenerator(object):
         return voxelgrid
 
 
-    def _load_pointcloud(self, pcd_path):
-        pointcloud = self.pointcloud_cache.get(pcd_path, [])
-        if pointcloud == []:
-            pointcloud = PyntCloud.from_file(pcd_path).points.values
-            pointcloud = pointcloud[:self.pointcloud_target_size]
-            pointcloud = np.array(pointcloud)
-            assert pointcloud.shape == (pointcloud_target_size, 4), pcd_path + " " + str(pointcloud.shape)
-            self.pointcloud_cache[pcd_path] = pointcloud
-        return pointcloud
-
-
     def get_input_shape(self):
 
         if self.input_type == "image":
@@ -332,6 +355,7 @@ class DataGenerator(object):
                         file_path = pcd_path
                         x_input = pointcloud
                     except Exception as e:
+                        print(e)
                         continue
 
                 # Should not happen.
@@ -428,6 +452,84 @@ class DataGenerator(object):
         y_outputs = np.array(y_outputs)
 
         return x_qrcodes, x_inputs, y_outputs
+
+
+    def analyze_files(self):
+
+        print("Number of JPGs:", len(self.jpg_paths))
+        print("Number of PCDs:", len(self.pcd_paths))
+        print("Number of JSONs (personal):", len(self.json_paths_personal))
+        print("Number of JSONs (measures):", len(self.json_paths_measures))
+
+
+    def analyze_targets(self):
+
+        all_targets = []
+        for _, (targets, _, _) in self.qrcodes_dictionary.items():
+            all_targets.append(targets)
+
+        x = [targets[0] for targets in all_targets]
+        y = [targets[1] for targets in all_targets]
+        plt.scatter(x, y)
+        plt.xlabel(self.output_targets[0])
+        plt.ylabel(self.output_targets[1])
+        plt.title("Distribution of " + str(len(all_targets)) + " targets.")
+        plt.show()
+        plt.close()
+
+
+    def analyze_pointclouds(self):
+
+        print("Analyzing pointclouds...")
+        pointcloud_sizes = []
+        bar = progressbar.ProgressBar(max_value=len(self.pcd_paths))
+        for index, pcd_path in enumerate(self.pcd_paths):
+            try:
+                pointcloud = self._load_pointcloud(pcd_path, preprocess=False, augmentation=False)
+                pointcloud_sizes.append(pointcloud.shape[0])
+            except ValueError:
+                pass
+            bar.update(index)
+        bar.finish()
+
+        print("Rendering histogram...")
+        plt.hist(pointcloud_sizes)
+        #plt.xlabel(self.output_targets[0])
+        #plt.ylabel(self.output_targets[1])
+        plt.title("Distribution of pointclouds-sizes.")
+        plt.show()
+        plt.close()
+
+
+    def analyze_voxelgrids(self):
+
+        print("Analyzing voxelgrids...")
+        voxelgrid_sizes = []
+        numbers_of_voxels = []
+        bar = progressbar.ProgressBar(max_value=len(self.pcd_paths))
+        for index, pcd_path in enumerate(self.pcd_paths):
+            try:
+                voxelgrid = self._load_voxelgrid(pcd_path, augmentation=False, preprocess=False)
+                voxelgrid_sizes.append(voxelgrid.shape[0])
+                number_of_voxels = np.count_nonzero(voxelgrid != 0.0)
+                numbers_of_voxels.append(number_of_voxels)
+            except ValueError as error:
+                print(pcd_path)
+                print(error)
+                pass
+            bar.update(index)
+        bar.finish()
+
+        print("Rendering histograms...")
+        plt.hist(voxelgrid_sizes)
+        plt.title("Distribution of voxelgrid-sizes.")
+        plt.show()
+        plt.close()
+
+        plt.hist(numbers_of_voxels)
+        plt.title("Distribution of number of voxels.")
+        plt.show()
+        plt.close()
 
 
 def test_generator():
