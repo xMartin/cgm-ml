@@ -56,7 +56,6 @@ class DataGenerator(object):
 
         # Find all QR-codes.
         self._find_qrcodes()
-        assert self.qrcodes != [], "No QR-codes found!"
 
         # Create the QR-codes dictionary.
         self._create_qrcodes_dictionary()
@@ -64,19 +63,25 @@ class DataGenerator(object):
 
     def _get_paths(self):
 
+        print(self.dataset_path)
+
         # Getting the paths for images.
         glob_search_path = os.path.join(self.dataset_path, "storage/person", "**/*.jpg")
         self.jpg_paths = glob2.glob(glob_search_path)
+        assert self.jpg_paths != []
 
         # Getting the paths for point clouds.
         glob_search_path = os.path.join(self.dataset_path, "storage/person", "**/*.pcd")
         self.pcd_paths = glob2.glob(glob_search_path)
+        assert self.pcd_paths != []
 
         # Getting the paths for personal and measurement.
         glob_search_path = os.path.join(self.dataset_path, "**/*.json")
         json_paths = glob2.glob(glob_search_path)
         self.json_paths_personal = [json_path for json_path in json_paths if "measures" not in json_path]
         self.json_paths_measures = [json_path for json_path in json_paths if "measures" in json_path]
+        assert self.json_paths_personal != []
+        assert self.json_paths_measures != []
         del json_paths
 
 
@@ -89,6 +94,8 @@ class DataGenerator(object):
             qrcodes.append(qrcode)
         qrcodes = sorted(list(set(qrcodes)))
 
+        assert qrcodes != [], "No QR-codes found!"
+
         self.qrcodes = qrcodes
 
 
@@ -97,6 +104,7 @@ class DataGenerator(object):
         qrcodes_dictionary = {}
 
         for json_path_measure in self.json_paths_measures:
+
             json_data_measure = json.load(open(json_path_measure))
 
             # Ensure manual data.
@@ -106,17 +114,21 @@ class DataGenerator(object):
             # Extract the QR-code.
             qrcode = self._extract_qrcode(json_data_measure)
 
-            # In the future there will be multiple manual measurements. Handle this!
-            if qrcode in qrcodes_dictionary.keys():
-                print("WARNING! Multiple manual measurements for QR-code: " + qrcode + " " + json_path_measure)
-                continue
+            # Create an array in the dictionary.
+            if qrcode not in qrcodes_dictionary.keys():
+                qrcodes_dictionary[qrcode] = []
 
             # Extract the targets.
             targets = self._extract_targets(json_data_measure)
-            jpg_paths = [jpg_path for jpg_path in self.jpg_paths if qrcode in jpg_path and "measurements" in jpg_path]
-            pcd_paths = [pcd_path for pcd_path in self.pcd_paths if qrcode in pcd_path and "measurements" in pcd_path]
 
-            qrcodes_dictionary[qrcode] = targets, jpg_paths, pcd_paths
+            # Extract the timestamp.
+            timestamp = self._extract_timestamp_from_path(json_path_measure)
+
+            # Filter paths for qrcodes and measurements.
+            jpg_paths = [jpg_path for jpg_path in self.jpg_paths if self._is_matching_measurement(jpg_path, qrcode, timestamp) == True]
+            pcd_paths = [pcd_path for pcd_path in self.pcd_paths if self._is_matching_measurement(pcd_path, qrcode, timestamp) == True]
+
+            qrcodes_dictionary[qrcode].append((targets, jpg_paths, pcd_paths))
 
         self.qrcodes_dictionary = qrcodes_dictionary
 
@@ -137,6 +149,37 @@ class DataGenerator(object):
         json_data_personal = json.load(open(json_path_personal))
         qrcode = json_data_personal["qrcode"]["value"]
         return qrcode
+
+
+    def _is_matching_measurement(self, path, qrcode, timestamp):
+
+        if qrcode not in path:
+            return False
+
+        if "measurements" not in path:
+            return False
+
+        #print(path, qrcode, timestamp)
+
+        #print(path)
+
+        path_timestamp = self._extract_timestamp_from_path(path)
+        #print(path_timestamp)
+        difference = abs(int(timestamp) - int(path_timestamp))
+        #print(path_timestamp, difference)
+        milliseconds_in_twenty_four_hours = 60 * 60 * 24 * 1000
+        if difference > milliseconds_in_twenty_four_hours:
+            #print("!!!", path_timestamp, timestamp)
+            #print(difference, seconds_in_twenty_four_hours)
+            return False
+
+        return True
+
+    def _extract_timestamp_from_path(self, file_path):
+        timestamp = file_path.split(os.sep)[-1].split("_")[2]
+        assert len(timestamp) == 13, len(timestamp)
+        assert timestamp.isdigit()
+        return timestamp
 
 
     def _load_image(self, image_path):
@@ -275,6 +318,17 @@ class DataGenerator(object):
         return voxelgrid
 
 
+    def print_statistics(self):
+
+        for qr_code, array in self.qrcodes_dictionary.items():
+            print("QR-Code", qr_code, "has", len(array), "different manual measurements")
+            for (targets, jpg_paths, pcd_paths) in array:
+                print("  ", "Target", targets, "with", len(jpg_paths), "JPGs and", len(pcd_paths), "PCDs.")
+
+        #qrcodes_dictionary[qrcode].append((targets, jpg_paths, pcd_paths))
+
+
+
     def get_input_shape(self):
 
         if self.input_type == "image":
@@ -313,10 +367,10 @@ class DataGenerator(object):
                 # Get a random QR-code.
                 qrcode = random.choice(qrcodes_to_use)
 
-                # Get targets and paths.
+                # Get targets and paths randomly.
                 if qrcode not in  self.qrcodes_dictionary.keys():
                     continue
-                targets, jpg_paths, pcd_paths = self.qrcodes_dictionary[qrcode]
+                targets, jpg_paths, pcd_paths = random.choice(self.qrcodes_dictionary[qrcode])
 
                 # Get a sample.
                 x_input = None
@@ -539,7 +593,7 @@ def test_generator():
     else:
         dataset_path = "../data"
 
-    data_generator = DataGenerator(dataset_path=dataset_path, input_type="voxelgrid", output_targets=["height", "weight"])
+    data_generator = DataGenerator(dataset_path=dataset_path, input_type="pointcloud", output_targets=["height", "weight"])
 
     print("jpg_paths", len(data_generator.jpg_paths))
     print("pcd_paths", len(data_generator.jpg_paths))
@@ -547,6 +601,7 @@ def test_generator():
     print("json_paths_measures", len(data_generator.jpg_paths))
     print("QR-Codes:\n" + "\n".join(data_generator.qrcodes))
     #print(data_generator.qrcodes_dictionary)
+    data_generator.print_statistics()
 
     qrcodes_shuffle = list(data_generator.qrcodes)
     random.shuffle(qrcodes_shuffle)
@@ -555,13 +610,13 @@ def test_generator():
     qrcodes_validate = qrcodes_shuffle[split_index:]
 
     print("Training data:")
-    x_train, y_train = next(data_generator.generate(size=200, qrcodes_to_use=qrcodes_train))
+    x_train, y_train = next(data_generator.generate(size=200, qrcodes_to_use=qrcodes_train, verbose=True))
     print(x_train.shape)
     print(y_train.shape)
     print("")
 
     print("Validation data:")
-    x_validate, y_validate = next(data_generator.generate(size=20, qrcodes_to_use=qrcodes_validate))
+    x_validate, y_validate = next(data_generator.generate(size=20, qrcodes_to_use=qrcodes_validate, verbose=True))
     print(x_validate.shape)
     print(y_validate.shape)
     print("")
@@ -606,7 +661,7 @@ def test_parameters():
 
 
 if __name__ == "__main__":
-    #test_generator()
+    test_generator()
     #test_dataset()
     #test_parameters()
     pass
