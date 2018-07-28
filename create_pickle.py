@@ -1,3 +1,9 @@
+import os
+from datagenerator import DataGenerator
+import pickle
+import random
+import datetime
+
 if os.path.exists("datasetpath.txt"):
     dataset_path = open("datasetpath.txt", "r").read().replace("\n", "")
 else:
@@ -6,7 +12,7 @@ else:
 input_type="pointcloud"
 
 # For creating voxelgrids.
-if input_type == "voxelgrid"
+if input_type == "voxelgrid":
     dataset_parameters = {}
     dataset_parameters["input_type"] = "voxelgrid"
     dataset_parameters["output_targets"] = ["height", "weight"]    
@@ -18,7 +24,7 @@ if input_type == "voxelgrid"
     dataset_parameters["dataset_size_test"] = 1000
 
 # For creating pointclouds.
-if input_type == "pointcloud"
+if input_type == "pointcloud":
     dataset_parameters = {}
     dataset_parameters["input_type"] = "pointcloud"
     dataset_parameters["output_targets"] = ["height", "weight"]    
