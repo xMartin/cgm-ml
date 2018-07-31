@@ -354,7 +354,11 @@ class DataGenerator(object):
         if qrcodes_to_use == None:
             qrcodes_to_use = self.qrcodes
 
+        # Main loop.
         while True:
+
+            if verbose == True:
+                print("Generating using QR-codes:", qrcodes_to_use)
 
             x_inputs = []
             y_outputs = []
@@ -431,6 +435,7 @@ class DataGenerator(object):
             if verbose == True:
                 bar.finish()
 
+            # Turn everything into ndarrays.
             x_inputs = np.array(x_inputs)
             y_outputs = np.array(y_outputs)
 
