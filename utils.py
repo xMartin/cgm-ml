@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import itertools
+import datetime
 
 
 def render_voxelgrid(voxelgrid):
@@ -20,3 +21,7 @@ def render_voxelgrid(voxelgrid):
     ax.voxels(transformed_voxelgrid, facecolors=facecolors, edgecolor="k")
     plt.show()
     plt.close()
+
+
+def get_datetime_string():
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M")
