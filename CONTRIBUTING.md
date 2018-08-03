@@ -1,14 +1,14 @@
 # Contributions
 
 It is expected that all contributors to Child Growth Monitor sign the [Contributor Agreement](CONTRIBUTOR_AGREEMENT.md). 
-Once signed, please mail the Agreement to [Joachim Schwarz](Joachim.Schwarz@welthungerhilfe.de), 
-[Jochen Moninger](Jochen.Moninger@welthungerhilfe.de), and [Markus Matiaschek](mmatiaschek@gmail.com).
+Once signed, please mail the Agreement to [Joachim Schwarz](mailto:Joachim.Schwarz@welthungerhilfe.de), 
+[Jochen Moninger](mailto:Jochen.Moninger@welthungerhilfe.de), and [Markus Matiaschek](mailto:mmatiaschek@gmail.com).
 
 # Data access
 
 Data access is provided on as-needed basis following signature of the Welthungerhilfe Data Privacy & Commitment to
 Maintain Data Secrecy Agreement. If you need data access (e.g. to train your machine learning models), 
-please contact [Markus Matiaschek](mmatiaschek@gmail.com) for details.
+please contact [Markus Matiaschek](mailto:mmatiaschek@gmail.com) for details.
 
 # Copyright notice headers
 
