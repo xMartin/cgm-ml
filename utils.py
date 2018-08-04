@@ -3,6 +3,40 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import itertools
 import datetime
+import vtk
+from mpl_toolkits.mplot3d import Axes3D
+
+
+def load_vtk(vtk_path):
+
+    reader = vtk.vtkDataSetReader()
+    reader.SetFileName(vtk_path)
+    reader.ReadAllVectorsOn()
+    reader.ReadAllScalarsOn()
+    reader.Update()
+    data = reader.GetOutput()
+
+    points = np.zeros((data.GetNumberOfPoints(), 3))
+
+    for i in range(data.GetNumberOfPoints()):
+        points[i] = data.GetPoint(i)
+
+    return points
+
+
+def render_pointcloud(points):
+
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.scatter(points[:,0], points[:,1], points[:,2], s=0.5, cmap="gray", alpha=0.5)
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+
+    plt.show()
+    plt.close()
 
 
 def render_voxelgrid(voxelgrid):
