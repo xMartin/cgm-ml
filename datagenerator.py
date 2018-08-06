@@ -7,6 +7,9 @@ import keras.preprocessing.image as image_preprocessing
 import progressbar
 from pyntcloud import PyntCloud
 import matplotlib.pyplot as plt
+import multiprocessing as mp
+import uuid
+import pickle
 
 
 class DataGenerator(object):
@@ -54,8 +57,20 @@ class DataGenerator(object):
         # Get all the paths.
         self._get_paths()
 
+        # Check if paths are fine.
+        if self.input_type == "image":
+            assert self.jpg_paths != []
+        elif self.input_type == "voxelgrid" or self.input_type == "pointcloud":
+            assert self.pcd_paths != []
+        else:
+            raise Exception("Unexpected: " + self.input_type)
+        assert self.json_paths_personal != []
+        assert self.json_paths_measures != []
+
         # Find all QR-codes.
         self._find_qrcodes()
+        assert self.qrcodes != [], "No QR-codes found!"
+
 
         # Create the QR-codes dictionary.
         self._create_qrcodes_dictionary()
@@ -68,20 +83,16 @@ class DataGenerator(object):
         # Getting the paths for images.
         glob_search_path = os.path.join(self.dataset_path, "storage/person", "**/*.jpg")
         self.jpg_paths = glob2.glob(glob_search_path)
-        assert self.jpg_paths != []
 
         # Getting the paths for point clouds.
         glob_search_path = os.path.join(self.dataset_path, "storage/person", "**/*.pcd")
         self.pcd_paths = glob2.glob(glob_search_path)
-        assert self.pcd_paths != []
 
         # Getting the paths for personal and measurement.
         glob_search_path = os.path.join(self.dataset_path, "**/*.json")
         json_paths = glob2.glob(glob_search_path)
         self.json_paths_personal = [json_path for json_path in json_paths if "measures" not in json_path]
         self.json_paths_measures = [json_path for json_path in json_paths if "measures" in json_path]
-        assert self.json_paths_personal != []
-        assert self.json_paths_measures != []
         del json_paths
 
 
@@ -93,8 +104,6 @@ class DataGenerator(object):
             qrcode = self._extract_qrcode(json_data_measure)
             qrcodes.append(qrcode)
         qrcodes = sorted(list(set(qrcodes)))
-
-        assert qrcodes != [], "No QR-codes found!"
 
         self.qrcodes = qrcodes
 
@@ -250,7 +259,6 @@ class DataGenerator(object):
         rotated_data = np.zeros(point_cloud.shape, dtype=np.float32)
         for k in range(point_cloud.shape[0]):
 
-
             shape_pc = point_cloud[k, ...]
             rotated_data[k, ...] = np.dot(shape_pc.reshape((-1, 3)), rotation_matrix)
 
@@ -349,7 +357,7 @@ class DataGenerator(object):
         return len(self.output_targets)
 
 
-    def generate(self, size, qrcodes_to_use=None, verbose=False, yield_file_paths=False):
+    def generate(self, size, qrcodes_to_use=None, verbose=False, yield_file_paths=False, multiprocessing_jobs=1):
 
         if qrcodes_to_use == None:
             qrcodes_to_use = self.qrcodes
@@ -357,92 +365,74 @@ class DataGenerator(object):
         # Main loop.
         while True:
 
-            if verbose == True:
-                print("Generating using QR-codes:", qrcodes_to_use)
+            # Use only a single process.
+            if multiprocessing_jobs == 1:
+                yield generate_data(self, size, qrcodes_to_use, verbose, yield_file_paths, None)
 
-            x_inputs = []
-            y_outputs = []
-            file_paths = []
+            # Use multiple processes.
+            elif multiprocessing_jobs > 1:
 
-            if verbose == True:
-                bar = progressbar.ProgressBar(max_value=size)
-            while len(x_inputs) < size:
+                # Create chunks of almost equal size.
+                subset_sizes = [0] * multiprocessing_jobs
+                subset_sizes[0:multiprocessing_jobs - 1] = [size // multiprocessing_jobs] * (multiprocessing_jobs - 1)
+                subset_sizes[multiprocessing_jobs - 1] = size - sum(subset_sizes[0:multiprocessing_jobs - 1])
+                assert sum(subset_sizes) == size
 
-                # Get a random QR-code.
-                qrcode = random.choice(qrcodes_to_use)
+                # Create an output_queue.
+                output_queue = mp.Queue()
 
-                # Get targets and paths randomly.
-                if qrcode not in  self.qrcodes_dictionary.keys():
-                    continue
-                targets, jpg_paths, pcd_paths = random.choice(self.qrcodes_dictionary[qrcode])
+                # Create the processes.
+                processes = []
+                for subset_size in subset_sizes:
+                    process_target = generate_data
+                    process_args = (self, subset_size, qrcodes_to_use, verbose, yield_file_paths, output_queue)
+                    process = mp.Process(target=process_target, args=process_args)
+                    processes.append(process)
 
-                # Get a sample.
-                x_input = None
-                y_output = None
-                file_path = None
+                # Start the processes.
+                for p in processes:
+                    p.start()
 
-                # Get a random image.
-                if self.input_type == "image":
-                    if len(jpg_paths) == 0:
-                        continue
-                    jpg_path = random.choice(jpg_paths)
-                    image = self._load_image(jpg_path)
-                    file_path = jpg_path
-                    x_input = image
+                # Exit the completed processes.
+                for p in processes:
+                    p.join()
 
-                # Get a random voxelgrid.
-                elif self.input_type == "voxelgrid":
-                    if len(pcd_paths) == 0:
-                        continue
-                    pcd_path = random.choice(pcd_paths)
-                    try:
-                        voxelgrid = self._load_voxelgrid(pcd_path)
-                        file_path = pcd_path
-                        x_input = voxelgrid
-                    except Exception as e:
-                        print(e)
-                        continue
+                # Get process results from the output queue
+                output_paths = [output_queue.get() for p in processes]
 
-                # Get a random pointcloud.
-                elif self.input_type == "pointcloud":
-                    if len(pcd_paths) == 0:
-                        continue
-                    pcd_path = random.choice(pcd_paths)
-                    try:
-                        pointcloud = self._load_pointcloud(pcd_path)
-                        file_path = pcd_path
-                        x_input = pointcloud
-                    except Exception as e:
-                        print(e)
-                        continue
+                # Merge data.
+                x_inputs_arrays = []
+                y_outputs_arrays = []
+                file_paths_arrays = []
+                for output_path in output_paths:
+                    # Read data from file and delete it.
+                    result_values = pickle.load(open(output_path, "rb"))
+                    os.remove(output_path)
 
-                # Should not happen.
+                    # Gather the data into arrays.
+                    x_inputs_arrays.append(result_values[0])
+                    y_outputs_arrays.append(result_values[1])
+                    if yield_file_paths == True:
+                        file_paths_arrays.append(result_values[2])
+                    else:
+                        file_paths_arrays.append([])
+                x_inputs = np.concatenate(x_inputs_arrays)
+                y_outputs = np.concatenate(y_outputs_arrays)
+                file_paths = np.concatenate(file_paths_arrays)
+                assert len(x_inputs) == size
+                assert len(y_outputs) == size
+
+                # Done.
+                if yield_file_paths == False:
+                    yield x_inputs, y_outputs
                 else:
-                    raise Exception("Unknown input_type: " + input_type)
+                    yield x_inputs, y_outputs, file_paths
 
-                # Set the output.
-                y_output = targets
-
-                # Got a proper sample.
-                if x_input is not None and y_output is not None and file_path is not None:
-                    x_inputs.append(x_input)
-                    y_outputs.append(y_output)
-                    file_paths.append(pcd_path)
-
-                if verbose == True:
-                    bar.update(len(x_inputs))
-
-            if verbose == True:
-                bar.finish()
-
-            # Turn everything into ndarrays.
-            x_inputs = np.array(x_inputs)
-            y_outputs = np.array(y_outputs)
-
-            if yield_file_paths == False:
-                yield x_inputs, y_outputs
             else:
-                yield x_inputs, y_outputs, file_paths
+                raise Exception("Unexpected value for 'multiprocessing_jobs' " + str(multiprocessing_jobs))
+
+
+
 
 
     def generate_dataset(self, qrcodes_to_use=None):
@@ -663,6 +653,102 @@ def test_parameters():
     assert x_input.shape[1:] == (20, 4)
 
     print("Done.")
+
+def generate_data(class_self, size, qrcodes_to_use, verbose, yield_file_paths, output_queue):
+    if verbose == True:
+        print("Generating using QR-codes:", qrcodes_to_use)
+
+    x_inputs = []
+    y_outputs = []
+    file_paths = []
+
+    if verbose == True:
+        bar = progressbar.ProgressBar(max_value=size)
+    while len(x_inputs) < size:
+
+        # Get a random QR-code.
+        qrcode = random.choice(qrcodes_to_use)
+
+        # Get targets and paths randomly.
+        if qrcode not in  class_self.qrcodes_dictionary.keys():
+            continue
+        targets, jpg_paths, pcd_paths = random.choice(class_self.qrcodes_dictionary[qrcode])
+
+        # Get a sample.
+        x_input = None
+        y_output = None
+        file_path = None
+
+        # Get a random image.
+        if class_self.input_type == "image":
+            if len(jpg_paths) == 0:
+                continue
+            jpg_path = random.choice(jpg_paths)
+            image = class_self._load_image(jpg_path)
+            file_path = jpg_path
+            x_input = image
+
+        # Get a random voxelgrid.
+        elif class_self.input_type == "voxelgrid":
+            if len(pcd_paths) == 0:
+                continue
+            pcd_path = random.choice(pcd_paths)
+            try:
+                voxelgrid = class_self._load_voxelgrid(pcd_path)
+                file_path = pcd_path
+                x_input = voxelgrid
+            except Exception as e:
+                print(e)
+                continue
+
+        # Get a random pointcloud.
+        elif class_self.input_type == "pointcloud":
+            if len(pcd_paths) == 0:
+                continue
+            pcd_path = random.choice(pcd_paths)
+            try:
+                pointcloud = class_self._load_pointcloud(pcd_path)
+                file_path = pcd_path
+                x_input = pointcloud
+            except Exception as e:
+                print(e)
+                continue
+
+        # Should not happen.
+        else:
+            raise Exception("Unknown input_type: " + input_type)
+
+        # Set the output.
+        y_output = targets
+
+        # Got a proper sample.
+        if x_input is not None and y_output is not None and file_path is not None:
+            x_inputs.append(x_input)
+            y_outputs.append(y_output)
+            file_paths.append(pcd_path)
+
+        if verbose == True:
+            bar.update(len(x_inputs))
+
+    if verbose == True:
+        bar.finish()
+
+    # Turn everything into ndarrays.
+    x_inputs = np.array(x_inputs)
+    y_outputs = np.array(y_outputs)
+
+    if yield_file_paths == False:
+        return_values =  (x_inputs, y_outputs)
+    else:
+        return_values = (x_inputs, y_outputs, file_paths)
+
+    # This is used in multiprocessing. Creates a pickle file and puts the data there.
+    if output_queue != None:
+        output_path = uuid.uuid4().hex + ".p"
+        pickle.dump(return_values, open(output_path, "wb"))
+        output_queue.put(output_path)
+    else:
+        return return_values
 
 
 if __name__ == "__main__":
