@@ -55,7 +55,7 @@ please contact [Markus Matiaschek](mailto:mmatiaschek@gmail.com) for details.
 ### Training the models
 * Run the notebook `train_on_dataset.ipynb`
 
-*This currently takes around 6 hours to run on a local NVIDIA GTX 1080 Ti.
+*This currently takes around 6 hours to run on a local NVIDIA GTX 1080 Ti.*
 
 ### Evaluating the results
 TODO
