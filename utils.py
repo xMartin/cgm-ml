@@ -5,9 +5,13 @@ import itertools
 import datetime
 import vtk
 from mpl_toolkits.mplot3d import Axes3D
+import glob
 
 
 def load_vtk(vtk_path):
+    """
+    Loads a VTK-file.
+    """
 
     reader = vtk.vtkDataSetReader()
     reader.SetFileName(vtk_path)
@@ -25,6 +29,9 @@ def load_vtk(vtk_path):
 
 
 def render_pointcloud(points):
+    """
+    Renders a point-cloud.
+    """
 
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
@@ -40,6 +47,10 @@ def render_pointcloud(points):
 
 
 def render_voxelgrid(voxelgrid):
+    """
+    Renders a voxel-grid.
+    """
+
     figsize = (5, 5)
     fig = plt.figure(figsize=figsize)
     ax = fig.gca(projection='3d')
@@ -58,4 +69,15 @@ def render_voxelgrid(voxelgrid):
 
 
 def get_datetime_string():
+    """
+    Returns a datetime string.
+    """
+
     return datetime.datetime.now().strftime("%Y%m%d-%H%M")
+
+
+def get_latest_preprocessed_dataset(filter):
+    """
+    Retrieves the path of the latest preprocessed dataset. Takes into account a filter.
+    """
+    return sorted([x for x in glob.glob("*.p") if filter in x])[-1]
