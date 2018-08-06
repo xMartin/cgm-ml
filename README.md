@@ -23,7 +23,8 @@ These steps provide an example installation on a local Ubuntu workstation from s
 * Install Ubuntu Desktop 18.04.1 LTS	
 * Install NVIDIA drivers  
 *Please note that after rebooting, the secure boot process will prompt you to authorize the driver to use the hardware via a MOK Management screen.*
-```sudo add-apt-repository ppa:graphics-drivers
+```
+sudo add-apt-repository ppa:graphics-drivers
 sudo apt-get update
 sudo apt-get install nvidia-390
 sudo reboot now
@@ -49,7 +50,7 @@ Maintain Data Secrecy Agreement. If you need data access (e.g. to train your mac
 please contact [Markus Matiaschek](mailto:mmatiaschek@gmail.com) for details.
 
 ### Preparing training data
-* Run `python create_pickle.py'
+* Run `python create_pickle.py`
 * Run the notebook `create_dataset.ipynb`
 
 ### Training the models
