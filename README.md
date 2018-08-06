@@ -58,4 +58,4 @@ Our [releases](https://github.com/Welthungerhilfe/cgm-ml/releases) use [semantic
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details and refer to [NOTICE](NOTICE) for additional licensing notes and uses of third-party components.
+This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details and refer to [NOTICE](NOTICE) for additional licensing notes and use of third-party components.
