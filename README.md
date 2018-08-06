@@ -43,6 +43,11 @@ pip install --upgrade pip
 pip install git+https://github.com/daavoo/pyntcloud
 ```
 
+### Dataset access
+Data access is provided on as-needed basis following signature of the Welthungerhilfe Data Privacy & Commitment to
+Maintain Data Secrecy Agreement. If you need data access (e.g. to train your machine learning models), 
+please contact [Markus Matiaschek](mailto:mmatiaschek@gmail.com) for details.
+
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
