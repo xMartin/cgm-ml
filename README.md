@@ -48,6 +48,18 @@ Data access is provided on as-needed basis following signature of the Welthunger
 Maintain Data Secrecy Agreement. If you need data access (e.g. to train your machine learning models), 
 please contact [Markus Matiaschek](mailto:mmatiaschek@gmail.com) for details.
 
+### Preparing training data
+* Run `python create_pickle.py'
+* Run the notebook `create_dataset.ipynb`
+
+### Training the models
+* Run the notebook `train_on_dataset.ipynb`
+
+*This currently takes around 6 hours to run on a local NVIDIA GTX 1080 Ti.
+
+### Evaluating the results
+TODO
+
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
