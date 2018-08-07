@@ -209,6 +209,9 @@ class DataGenerator(object):
 
             if self.pointcloud_target_size != None and preprocess == True:
                 pointcloud = pointcloud[:self.pointcloud_target_size]
+                if len(pointcloud) < self.pointcloud_target_size:
+                    zeros = np.zeros((self.pointcloud_target_size - len(pointcloud), 4))
+                    pointcloud = np.concatenate([pointcloud, zeros])
 
             if self.pointcloud_random_rotation == True and augmentation==True:
                 numpy_points = pointcloud[:,0:3]
@@ -376,6 +379,7 @@ class DataGenerator(object):
                 subset_sizes = [0] * multiprocessing_jobs
                 subset_sizes[0:multiprocessing_jobs - 1] = [size // multiprocessing_jobs] * (multiprocessing_jobs - 1)
                 subset_sizes[multiprocessing_jobs - 1] = size - sum(subset_sizes[0:multiprocessing_jobs - 1])
+                subset_sizes = [s for s in subset_sizes if s > 0]
                 assert sum(subset_sizes) == size
 
                 # Create an output_queue.
@@ -407,15 +411,22 @@ class DataGenerator(object):
                 for output_path in output_paths:
                     # Read data from file and delete it.
                     result_values = pickle.load(open(output_path, "rb"))
+                    assert result_values[0] != []
+                    assert result_values[1] != []
                     os.remove(output_path)
 
                     # Gather the data into arrays.
+                    if x_inputs_arrays != []:
+                        assert result_values[0].shape[1:] == x_inputs_arrays[-1].shape[1:], str(result_values[0].shape) + " vs " + str(x_inputs_arrays[-1].shape)
+                    if y_outputs_arrays != []:
+                        assert result_values[1].shape[1:] == y_outputs_arrays[-1].shape[1:], str(result_values[1].shape) + " vs " + str(y_outputs_arrays[-1].shape)
                     x_inputs_arrays.append(result_values[0])
                     y_outputs_arrays.append(result_values[1])
                     if yield_file_paths == True:
                         file_paths_arrays.append(result_values[2])
                     else:
                         file_paths_arrays.append([])
+
                 x_inputs = np.concatenate(x_inputs_arrays)
                 y_outputs = np.concatenate(y_outputs_arrays)
                 file_paths = np.concatenate(file_paths_arrays)
@@ -675,6 +686,8 @@ def generate_data(class_self, size, qrcodes_to_use, verbose, yield_file_paths, o
     if verbose == True:
         print("Generating using QR-codes:", qrcodes_to_use)
 
+    assert size != 0
+
     x_inputs = []
     y_outputs = []
     file_paths = []
@@ -754,6 +767,9 @@ def generate_data(class_self, size, qrcodes_to_use, verbose, yield_file_paths, o
     x_inputs = np.array(x_inputs)
     y_outputs = np.array(y_outputs)
 
+    # Prepare result values.
+    assert x_inputs != []
+    assert y_outputs != []
     if yield_file_paths == False:
         return_values =  (x_inputs, y_outputs)
     else:
