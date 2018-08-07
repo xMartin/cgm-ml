@@ -70,7 +70,7 @@ def render_voxelgrid(voxelgrid, title=None):
 
     if title != None:
         plt.title(title)
-        
+
     plt.show()
     plt.close()
 
@@ -87,11 +87,17 @@ def get_latest_preprocessed_dataset(filter):
     """
     Retrieves the path of the latest preprocessed dataset. Takes into account a filter.
     """
-    return sorted([x for x in glob.glob("*.p") if filter in x])[-1]
+    paths = [x for x in glob.glob("*.p") if filter in x]
+    if len(paths) == 0:
+        raise Exception("No datasets found for filter", filter)
+    return sorted(paths)[-1]
 
 
 def get_latest_model(filter):
     """
     Retrieves the path of the latest preprocessed dataset. Takes into account a filter.
     """
-    return sorted([x for x in glob.glob("*.h5") if filter in x])[-1]
+    paths = [x for x in glob.glob("*.h5") if filter in x]
+    if len(paths) == 0:
+        raise Exception("No models found for filter", filter)
+    return sorted(paths)[-1]
