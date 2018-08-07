@@ -512,10 +512,14 @@ class DataGenerator(object):
 
 
     def analyze_targets(self):
+        """
+        Extracts and analyzes all targets from the dataset.
+        """
 
         all_targets = []
-        for _, (targets, _, _) in self.qrcodes_dictionary.items():
-            all_targets.append(targets)
+        for _, targets_array in self.qrcodes_dictionary.items():
+            for (targets, _, _) in targets_array:
+                all_targets.append(targets)
 
         x = [targets[0] for targets in all_targets]
         y = [targets[1] for targets in all_targets]
@@ -553,21 +557,29 @@ class DataGenerator(object):
     def analyze_voxelgrids(self):
 
         print("Analyzing voxelgrids...")
-        voxelgrid_sizes = []
-        numbers_of_voxels = []
+        voxelgrid_sizes = [0] * len(self.pcd_paths)
+        numbers_of_voxels = [0] * len(self.pcd_paths)
+        voxel_densities = [0] * len(self.pcd_paths)
         bar = progressbar.ProgressBar(max_value=len(self.pcd_paths))
         for index, pcd_path in enumerate(self.pcd_paths):
             try:
                 voxelgrid = self._load_voxelgrid(pcd_path, augmentation=False, preprocess=False)
-                voxelgrid_sizes.append(voxelgrid.shape[0])
+                voxelgrid_size = voxelgrid.shape[0]
+                voxelgrid_sizes[index] = voxelgrid_size
                 number_of_voxels = np.count_nonzero(voxelgrid != 0.0)
-                numbers_of_voxels.append(number_of_voxels)
+                numbers_of_voxels[index] = number_of_voxels
+                voxel_densities[index] = number_of_voxels / (voxelgrid_size ** 3)
             except ValueError as error:
                 print(pcd_path)
                 print(error)
                 pass
             bar.update(index)
         bar.finish()
+
+        print("Getting the PCDs with the lowest voxel densities...")
+        argsort = np.argsort(numbers_of_voxels)
+        for index in argsort[0:20]:
+            print(numbers_of_voxels[index], ":", self.pcd_paths[index])
 
         print("Rendering histograms...")
         plt.hist(voxelgrid_sizes)
@@ -577,6 +589,11 @@ class DataGenerator(object):
 
         plt.hist(numbers_of_voxels)
         plt.title("Distribution of number of voxels.")
+        plt.show()
+        plt.close()
+
+        plt.hist(voxel_densities)
+        plt.title("Distribution of voxel densities.")
         plt.show()
         plt.close()
 

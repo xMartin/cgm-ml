@@ -28,7 +28,7 @@ def load_vtk(vtk_path):
     return points
 
 
-def render_pointcloud(points):
+def render_pointcloud(points, title=None):
     """
     Renders a point-cloud.
     """
@@ -42,11 +42,14 @@ def render_pointcloud(points):
     ax.set_ylabel("y")
     ax.set_zlabel("z")
 
+    if title != None:
+        plt.title(title)
+
     plt.show()
     plt.close()
 
 
-def render_voxelgrid(voxelgrid):
+def render_voxelgrid(voxelgrid, title=None):
     """
     Renders a voxel-grid.
     """
@@ -64,6 +67,10 @@ def render_voxelgrid(voxelgrid):
         facecolors[x, y, z, 2] = color
 
     ax.voxels(transformed_voxelgrid, facecolors=facecolors, edgecolor="k")
+
+    if title != None:
+        plt.title(title)
+        
     plt.show()
     plt.close()
 
@@ -81,3 +88,10 @@ def get_latest_preprocessed_dataset(filter):
     Retrieves the path of the latest preprocessed dataset. Takes into account a filter.
     """
     return sorted([x for x in glob.glob("*.p") if filter in x])[-1]
+
+
+def get_latest_model(filter):
+    """
+    Retrieves the path of the latest preprocessed dataset. Takes into account a filter.
+    """
+    return sorted([x for x in glob.glob("*.h5") if filter in x])[-1]
