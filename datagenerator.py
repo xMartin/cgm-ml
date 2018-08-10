@@ -14,6 +14,9 @@ import utils
 
 
 class DataGenerator(object):
+    """
+    This class generates data for training.
+    """
 
     def __init__(
         self,
@@ -27,15 +30,28 @@ class DataGenerator(object):
         pointcloud_target_size=32000,
         pointcloud_random_rotation=False
         ):
+        """
+        Initializes a DataGenerator.
+
+        Args:
+            dataset_path (string): Where the raw data is.
+            input_type (string): Specifies how the input-data for the Neural Network looks like. Either 'image', 'pointcloud', 'voxgrid'.
+            output_targets (list of strings): A list of targets for the Neural Network. For example *['height', 'weight']*.
+            image_target_shape (2D tuple of ints): Target shape of the images.
+            voxelgrid_target_shape (3D tuple of ints): Target shape of the voxelgrids.
+            voxel_size_meters (float): Size of the voxels. That is, edge length.
+            voxelgrid_random_rotation (bool): If True voxelgrids will be rotated randomly.
+            pointcloud_target_size (int): Target size of the pointclouds.
+            pointcloud_random_rotation (bool): If True pointclouds will be rotated randomly.
+
+        """
 
         # Preconditions.
         assert os.path.exists(dataset_path), "dataset_path must exist: " + str(dataset_path)
         assert isinstance(input_type, str), "input_type must be string: " + str(input_type)
         assert isinstance(output_targets, list), "output_targets must be list: " + str(output_targets)
-
         if input_type == "image":
             assert len(image_target_shape) == 2, "image_target_shape must be 2-dimensional: " + str(image_target_shape)
-
         if input_type == "voxelgrid":
             assert len(voxelgrid_target_shape) == 3, "voxelgrid_target_shape must be 3-dimensional: " + str(voxelgrid_target_shape)
 
@@ -78,6 +94,11 @@ class DataGenerator(object):
 
 
     def _get_paths(self):
+        """
+        Retrieves all the relevant paths.
+
+        That is: Paths of JPGs, PCDs, and JSONs.
+        """
 
         print(self.dataset_path)
 
@@ -98,52 +119,80 @@ class DataGenerator(object):
 
 
     def _find_qrcodes(self):
+        """
+        Finds all QR-codes.
 
+        Each individual is represented via a unique QR-codes. This method extracts the set of QR-codes.
+        """
+
+        # Go through all the measures and extract their QR-codes.
         qrcodes = []
         for json_path_measure in self.json_paths_measures:
-            json_data_measure = json.load(open(json_path_measure))
+            json_path_measure_file = open(json_path_measure)
+            json_data_measure = json.load(json_path_measure_file)
             qrcode = self._extract_qrcode(json_data_measure)
             qrcodes.append(qrcode)
+            json_path_measure_file.close()
+
+        # Provide a sorted set.
         qrcodes = sorted(list(set(qrcodes)))
 
         self.qrcodes = qrcodes
 
 
     def _create_qrcodes_dictionary(self):
+        """
+        Creates a QR-Code-dictionary.
+
+        This basically sorts all PCDs and JPGs.
+        With respect to the targets and the QR-Codes.
+        This is used heavily during data generation.
+        Takes into account timestamps in order to connect data and measures.
+        """
 
         qrcodes_dictionary = {}
 
+        # Go thorugh all measures.
         for json_path_measure in self.json_paths_measures:
 
-            json_data_measure = json.load(open(json_path_measure))
+            # Load the data and get type.
+            measure_file = open(json_path_measure)
+            json_data_measure = json.load(measure_file)
+            measure_type = json_data_measure["type"]["value"]
+            measure_file.close()
 
-            # Ensure manual data.
-            if json_data_measure["type"]["value"] != "manual":
+            # Ensure manual data. If it is not a manual measurement, skip.
+            if measure_type != "manual":
                 continue
 
             # Extract the QR-code.
             qrcode = self._extract_qrcode(json_data_measure)
 
-            # Create an array in the dictionary.
+            # Create an array in the dictionary if necessary.
             if qrcode not in qrcodes_dictionary.keys():
                 qrcodes_dictionary[qrcode] = []
 
-            # Extract the targets.
+            # Extract the targets from the JSON-data.
             targets = self._extract_targets(json_data_measure)
 
-            # Extract the timestamp.
+            # Extract the timestamp from the JSON-data.
             timestamp = self._extract_timestamp_from_path(json_path_measure)
 
-            # Filter paths for qrcodes and measurements.
+            # Filter paths for qrcodes and measurements. Find all JPGs and PCDs for a given QR-code and make sure that the timestamps are related.
             jpg_paths = [jpg_path for jpg_path in self.jpg_paths if self._is_matching_measurement(jpg_path, qrcode, timestamp) == True]
             pcd_paths = [pcd_path for pcd_path in self.pcd_paths if self._is_matching_measurement(pcd_path, qrcode, timestamp) == True]
 
+            # Store it all.
             qrcodes_dictionary[qrcode].append((targets, jpg_paths, pcd_paths))
 
         self.qrcodes_dictionary = qrcodes_dictionary
 
 
     def _extract_targets(self, json_data_measure):
+        """
+        Extracts a list of targets from JSON.
+        """
+
         targets = []
         for output_target in self.output_targets:
             value = json_data_measure[output_target]["value"]
@@ -152,16 +201,39 @@ class DataGenerator(object):
 
 
     def _extract_qrcode(self, json_data_measure):
+        """
+        Extracts a QR-code from a JSON.
+        """
+
         person_id = json_data_measure["personId"]["value"]
         json_path_personal = [json_path for json_path in self.json_paths_personal if person_id in json_path]
         assert len(json_path_personal) == 1
         json_path_personal = json_path_personal[0]
-        json_data_personal = json.load(open(json_path_personal))
+        json_data_personal_file = open(json_path_personal)
+        json_data_personal = json.load(json_data_personal_file)
+        json_data_personal_file.close()
         qrcode = json_data_personal["qrcode"]["value"]
         return qrcode
 
 
-    def _is_matching_measurement(self, path, qrcode, timestamp):
+    def _is_matching_measurement(self, path, qrcode, timestamp, threshold=(60 * 60 * 24 * 1000)):
+        """
+        Returns True if timetamps match.
+
+        Given a timestamp it extracts a second one from the path.
+        It then computes the difference between those two timestamps.
+        If the differences are lower than the threshold it is a match.
+        And the QR-code must match too.
+
+        Args:
+            path (string): Path to some file.
+            qrcode (string): A QR-code that is supposed to be related to the file.
+            timestamp (string): A timestamp that is supposed to be related to the file.
+            threshold (string): A threshold for a match. In milliseconds. Default is one day.
+
+        Returns:
+            type: True if it is a match. False otherwise.
+        """
 
         if qrcode not in path:
             return False
@@ -169,23 +241,18 @@ class DataGenerator(object):
         if "measurements" not in path:
             return False
 
-        #print(path, qrcode, timestamp)
-
-        #print(path)
-
+        # Extract the timestamp from the path. Compute difference. Decide.
         path_timestamp = self._extract_timestamp_from_path(path)
-        #print(path_timestamp)
         difference = abs(int(timestamp) - int(path_timestamp))
-        #print(path_timestamp, difference)
-        milliseconds_in_twenty_four_hours = 60 * 60 * 24 * 1000
-        if difference > milliseconds_in_twenty_four_hours:
-            #print("!!!", path_timestamp, timestamp)
-            #print(difference, seconds_in_twenty_four_hours)
+        if difference > threshold:
             return False
 
         return True
 
     def _extract_timestamp_from_path(self, file_path):
+        """
+        Extracts a timestamp from a path.
+        """
         timestamp = file_path.split(os.sep)[-1].split("_")[2]
         assert len(timestamp) == 13, len(timestamp)
         assert timestamp.isdigit()
@@ -193,16 +260,23 @@ class DataGenerator(object):
 
 
     def _load_image(self, image_path):
+        """
+        Loads an image from a given path.
+
+        Makes use of a cache. Ensures that the loaded images has a target size.
+        """
+
         image = self.image_cache.get(image_path, [])
         if image == []:
             image = image_preprocessing.load_img(image_path, target_size=self.image_target_shape)
-            image = image.rotate(-90, expand=True)
+            image = image.rotate(-90, expand=True) # Rotation is necessary.
             image = np.array(image)
             self.voxelgrid_cache[image_path] = image
         return image
 
 
     def _load_pointcloud(self, pcd_path, preprocess=True, augmentation=True):
+
         pointcloud = self.pointcloud_cache.get(pcd_path, [])
         if pointcloud == []:
             pointcloud = PyntCloud.from_file(pcd_path).points.values
@@ -721,6 +795,29 @@ def generate_data(class_self, size, qrcodes_to_use, verbose, yield_file_paths, o
         output_queue.put(output_path)
     else:
         return return_values
+
+
+def create_datagenerator_from_parameters(dataset_path, dataset_parameters):
+    print("Creating data-generator...")
+    datagenerator = DataGenerator(
+        dataset_path=dataset_path,
+        input_type=dataset_parameters["input_type"],
+        output_targets=dataset_parameters["output_targets"],
+        voxelgrid_target_shape=dataset_parameters.get("voxelgrid_target_shape", None),
+        voxel_size_meters=dataset_parameters.get("voxel_size_meters", None),
+        voxelgrid_random_rotation=dataset_parameters.get("voxelgrid_random_rotation", None),
+        pointcloud_target_size=dataset_parameters.get("pointcloud_target_size", None),
+        pointcloud_random_rotation=dataset_parameters.get("pointcloud_random_rotation", None)
+    )
+    datagenerator.print_statistics()
+    return datagenerator
+
+def get_dataset_path():
+    if os.path.exists("datasetpath.txt"):
+        dataset_path = open("datasetpath.txt", "r").read().replace("\n", "")
+    else:
+        dataset_path = "../data"
+    return dataset_path
 
 
 if __name__ == "__main__":
