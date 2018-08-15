@@ -50,7 +50,6 @@ Maintain Data Secrecy Agreement. If you need data access (e.g. to train your mac
 please contact [Markus Matiaschek](mailto:mmatiaschek@gmail.com) for details.
 
 ### Preparing training data
-* Run `python create_pickle.py`
 * Run the notebook `create_dataset.ipynb`
 
 ### Training the models
