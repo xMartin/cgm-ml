@@ -39,7 +39,7 @@ source activate cgm
 conda install tensorflow-gpu
 conda install ipykernel
 conda install keras
-conda install vtk progressbar2 glob2 numbs pandas
+conda install vtk progressbar2 glob2 pandas
 pip install --upgrade pip
 pip install git+https://github.com/daavoo/pyntcloud
 ```
